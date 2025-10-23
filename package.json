@@ -1,0 +1,24 @@
+{
+  "name": "brooklyn-bot-ai",
+  "version": "1.0.0",
+  "description": "AI-powered customer service bot using OpenPhone + Claude",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "node server.js",
+    "build": "echo 'No build step needed'",
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "axios": "^1.6.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
+

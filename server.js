@@ -29,7 +29,7 @@ const AGENT_NAME = process.env.AGENT_NAME || 'Ellie';
 const TEST_PHONE = process.env.TEST_PHONE_NUMBER;
 
 const MAX_RESPONSES_PER_HOUR = parseInt(process.env.MAX_RESPONSES_PER_HOUR) || 10;
-const ENABLE_AUTO_RESPONSE = process.env.ENABLE_AUTO_RESPONSE === 'true';
+const ENABLE_AUTO_RESPONSE = process.env.ENABLE_AUTO_RESPONSE !== 'false';
 const BUSINESS_HOURS_START = parseInt(process.env.BUSINESS_HOURS_START) || 8;
 const BUSINESS_HOURS_END = parseInt(process.env.BUSINESS_HOURS_END) || 18;
 

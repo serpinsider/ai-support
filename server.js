@@ -271,11 +271,11 @@ async function shouldAutoRespond(message, conversationHistory) {
     return { shouldRespond: false, reason: 'Rate limit exceeded' };
   }
   
-  // Check business hours (optional - you can disable this)
-  if (!isBusinessHours() && process.env.NODE_ENV === 'production') {
-    console.log('🚨 Outside business hours');
-    return { shouldRespond: false, reason: 'Outside business hours' };
-  }
+  // Business hours check disabled for 24/7 customer service
+  // if (!isBusinessHours() && process.env.NODE_ENV === 'production') {
+  //   console.log('🚨 Outside business hours');
+  //   return { shouldRespond: false, reason: 'Outside business hours' };
+  // }
   
   // All checks passed
   return { shouldRespond: true, reason: 'All checks passed' };

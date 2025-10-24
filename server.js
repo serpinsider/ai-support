@@ -672,6 +672,26 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug endpoint to check conversation memory
+app.get('/debug/conversation/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const storedMessages = getStoredMessages(id);
+    const apiHistory = await getConversationHistory(id);
+    
+    res.json({
+      conversationId: id,
+      storedMessages: storedMessages,
+      apiHistory: apiHistory,
+      memorySize: conversationMemory.size,
+      allConversations: Array.from(conversationMemory.keys())
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/test', (req, res) => {
   res.status(200).json({ 
     status: 'ok',

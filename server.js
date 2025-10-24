@@ -24,10 +24,13 @@ const OPENPHONE_API = 'https://api.openphone.com/v1';
 const OPENPHONE_USER_ID = process.env.OPENPHONE_USER_ID || 'US4XHj7ZrY';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
-const BUSINESS_NAME = process.env.BUSINESS_NAME || 'Brooklyn Maids';
-const BUSINESS_DOMAIN = process.env.BUSINESS_DOMAIN || 'brooklynmaids.com';
-const AGENT_NAME = process.env.AGENT_NAME || 'Ellie';
+const BUSINESS_NAME = process.env.BUSINESS_NAME || 'Mesa Maids';
+const BUSINESS_DOMAIN = process.env.BUSINESS_DOMAIN || 'mesamaids.com';
+const AGENT_NAME = process.env.AGENT_NAME || 'Sarah';
 const TEST_PHONE = process.env.TEST_PHONE_NUMBER;
+
+// MESA MAIDS PHONE NUMBER ONLY - Filter all other numbers
+const MESA_PHONE_NUMBER = '+14805200202';
 
 const MAX_RESPONSES_PER_HOUR = parseInt(process.env.MAX_RESPONSES_PER_HOUR) || 10;
 const ENABLE_AUTO_RESPONSE = process.env.ENABLE_AUTO_RESPONSE !== 'false';
@@ -450,10 +453,20 @@ app.post('/webhook/incoming-message', async (req, res) => {
     const customerPhone = messageData.from;
     const messageContent = messageData.body || messageData.content;
     const conversationId = messageData.conversationId;
+    const toPhone = messageData.to;
     
     console.log(`From: ${customerPhone}`);
+    console.log(`To: ${toPhone}`);
     console.log(`Message: ${messageContent}`);
     console.log(`Conversation ID: ${conversationId}`);
+    
+    // CRITICAL: Only respond to Mesa Maids phone number
+    if (toPhone !== MESA_PHONE_NUMBER) {
+      console.log(`Ignoring message - not for Mesa (${toPhone} !== ${MESA_PHONE_NUMBER})`);
+      return res.sendStatus(200);
+    }
+    
+    console.log('✅ Message is for Mesa Maids - processing');
     
     // Store this incoming message in memory
     storeMessage(conversationId, {

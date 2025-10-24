@@ -172,42 +172,44 @@ function getStoredMessages(conversationId) {
 async function getConversationHistory(conversationId) {
   // First try our local memory
   const storedMessages = getStoredMessages(conversationId);
-  if (storedMessages.length > 0) {
-    console.log(`📋 Using stored conversation history: ${storedMessages.length} messages`);
-    return storedMessages;
+  
+  // If memory is empty or has very few messages, try to backfill from OpenPhone
+  if (storedMessages.length < 3) {
+    try {
+      console.log(`🔍 Backfilling conversation history from OpenPhone...`);
+      const response = await axios({
+        method: 'get',
+        url: `${OPENPHONE_API}/conversations/${conversationId}/messages`,
+        headers: {
+          'Authorization': OPENPHONE_API_KEY,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.data && response.data.data) {
+        const apiMessages = response.data.data
+          .map(msg => ({
+            direction: msg.direction,
+            body: msg.body || msg.content,
+            timestamp: msg.createdAt
+          }))
+          .reverse(); // Oldest first
+        
+        // Store these messages in memory for future use
+        if (apiMessages.length > 0) {
+          conversationMemory.set(conversationId, apiMessages);
+          console.log(`📋 Backfilled ${apiMessages.length} messages from OpenPhone`);
+          return apiMessages;
+        }
+      }
+      
+    } catch (error) {
+      console.log(`⚠️ OpenPhone API backfill failed (${error.response?.status}), using memory: ${storedMessages.length} messages`);
+    }
   }
   
-  // If no memory, try OpenPhone API
-  try {
-    console.log(`🔍 Fetching from OpenPhone API...`);
-    const response = await axios({
-      method: 'get',
-      url: `${OPENPHONE_API}/messages`,
-      headers: {
-        'Authorization': OPENPHONE_API_KEY,
-        'Content-Type': 'application/json'
-      },
-      params: {
-        phoneNumberId: 'PNh6cfCaXW', // Mesa Maids number ID
-        maxResults: 50
-      }
-    });
-    
-    if (response.data && response.data.data) {
-      // Filter for this conversation
-      const conversationMessages = response.data.data
-        .filter(msg => msg.conversationId === conversationId)
-        .reverse();
-      
-      console.log(`📋 Retrieved ${conversationMessages.length} messages from OpenPhone`);
-      return conversationMessages;
-    }
-    
-    return [];
-  } catch (error) {
-    console.error('❌ OpenPhone API failed, using empty history');
-    return [];
-  }
+  console.log(`📋 Using stored conversation history: ${storedMessages.length} messages`);
+  return storedMessages;
 }
 
 // Build conversation context for Claude
@@ -468,7 +470,7 @@ app.post('/webhook/incoming-message', async (req, res) => {
     
     console.log('✅ Message is for Mesa Maids - processing');
     
-    // Store this incoming message in memory
+    // Store this incoming message in memory (for context)
     storeMessage(conversationId, {
       direction: 'incoming',
       body: messageContent,

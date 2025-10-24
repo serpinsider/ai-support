@@ -7,6 +7,7 @@ import { buildSystemPrompt } from './config/prompt-builder.js';
 import { parsePropertyDetails } from './integrations/mesa-maids-api.js';
 import { createQuoteInSystem, extractPriceFromResponse, responseContainsPricing } from './integrations/quote-creator.js';
 import { isInBookingFlow, handleBookingFlowStep, startBookingFlow } from './integrations/booking-flow.js';
+import { getCustomerContext, formatContextForPrompt } from './integrations/hubspot-lookup.js';
 
 dotenv.config();
 
@@ -253,7 +254,7 @@ async function shouldAutoRespond(message, conversationHistory) {
   // Check for escalation keywords
   for (const keyword of escalationKeywords) {
     if (messageContent.includes(keyword)) {
-      console.log(`🚨 Escalation keyword detected: "${keyword}"`);
+      console.log(`Escalation keyword detected: "${keyword}"`);
       return { shouldRespond: false, reason: `Contains escalation keyword: ${keyword}` };
     }
   }
@@ -261,13 +262,13 @@ async function shouldAutoRespond(message, conversationHistory) {
   // Check if too many messages in this conversation
   const incomingCount = conversationHistory.filter(m => m.direction === 'incoming').length;
   if (incomingCount > 15) {
-    console.log('🚨 Too many messages in conversation');
+    console.log('Too many messages in conversation');
     return { shouldRespond: false, reason: 'Too many messages (>15)' };
   }
   
   // Check rate limit
   if (!checkRateLimit(message.from)) {
-    console.log('🚨 Rate limit exceeded');
+    console.log('Rate limit exceeded');
     return { shouldRespond: false, reason: 'Rate limit exceeded' };
   }
   
@@ -282,12 +283,21 @@ async function shouldAutoRespond(message, conversationHistory) {
 }
 
 // Generate AI response using Claude
-async function generateAIResponse(message, conversationHistory) {
+async function generateAIResponse(message, conversationHistory, customerContext = null) {
   try {
     const messageContent = message.body || message.content;
     
     // Parse property details from current message and history
     const propertyDetails = parsePropertyDetails(messageContent, conversationHistory);
+    
+    // If we have HubSpot context and no property details from conversation, use HubSpot
+    if (customerContext && customerContext.hasRecentQuote && !propertyDetails.bedrooms) {
+      const quote = customerContext.recentQuote;
+      propertyDetails.bedrooms = quote.bedrooms;
+      propertyDetails.bathrooms = quote.bathrooms;
+      propertyDetails.serviceType = quote.serviceType;
+      console.log('Using property details from HubSpot context:', propertyDetails);
+    }
     
     // Build context from conversation history
     let conversationContext = '';
@@ -295,15 +305,22 @@ async function generateAIResponse(message, conversationHistory) {
       conversationContext = buildConversationContext(conversationHistory);
     }
     
+    // Add customer context if available
+    if (customerContext) {
+      const contextInfo = formatContextForPrompt(customerContext);
+      conversationContext = `Customer Context: ${contextInfo}\n\n${conversationContext}`;
+    }
+    
     // Check if quote/link was already sent
     const quoteSent = wasQuoteSent(conversationHistory);
     
-    console.log('🔍 Context extraction:', {
+    console.log('Context extraction:', {
       bedrooms: propertyDetails.bedrooms,
       bathrooms: propertyDetails.bathrooms,
       serviceType: propertyDetails.serviceType,
       quoteSent,
-      historyLength: conversationHistory.length
+      historyLength: conversationHistory.length,
+      hasHubSpotContext: !!customerContext
     });
     
     // Build enhanced prompt with extracted context
@@ -358,7 +375,7 @@ Answer helpfully. If giving a price, include the booking link.`;
     }
     
     // Log confidence (based on response structure)
-    console.log(`🤖 AI Response generated (${response.usage.input_tokens} input tokens, ${response.usage.output_tokens} output tokens)`);
+    console.log(`AI Response generated (${response.usage.input_tokens} input tokens, ${response.usage.output_tokens} output tokens)`);
     
     return {
       success: true,
@@ -404,7 +421,7 @@ function validateAIResponse(response) {
 
 app.post('/webhook/incoming-message', async (req, res) => {
   try {
-    console.log('\n=== 📩 Incoming Message Webhook ===');
+    console.log('\n=== Incoming Message Webhook ===');
     console.log('Body:', JSON.stringify(req.body, null, 2));
     
     const { object, type, data } = req.body;
@@ -420,13 +437,13 @@ app.post('/webhook/incoming-message', async (req, res) => {
       // Legacy format
       messageData = data;
     } else {
-      console.log('❌ Not a message event');
+      console.log('Not a message event');
       return res.sendStatus(200);
     }
     
     // Only process incoming messages (not our outgoing ones)
     if (messageData.direction !== 'incoming') {
-      console.log('⏩ Skipping outgoing message');
+      console.log('Skipping outgoing message');
       return res.sendStatus(200);
     }
     
@@ -434,9 +451,9 @@ app.post('/webhook/incoming-message', async (req, res) => {
     const messageContent = messageData.body || messageData.content;
     const conversationId = messageData.conversationId;
     
-    console.log(`📱 From: ${customerPhone}`);
-    console.log(`💬 Message: ${messageContent}`);
-    console.log(`🔗 Conversation ID: ${conversationId}`);
+    console.log(`From: ${customerPhone}`);
+    console.log(`Message: ${messageContent}`);
+    console.log(`Conversation ID: ${conversationId}`);
     
     // Store this incoming message in memory
     storeMessage(conversationId, {
@@ -499,9 +516,14 @@ ${latest.bookingUrl}`, messageData.to);
     }
     
     // Get conversation history
-    console.log('📜 Fetching conversation history...');
+    console.log('Fetching conversation history...');
     const conversationHistory = await getConversationHistory(conversationId);
-    console.log(`📚 Found ${conversationHistory.length} previous messages`);
+    console.log(`Found ${conversationHistory.length} previous messages`);
+
+    // Look up customer context in HubSpot
+    console.log('Looking up customer context in HubSpot...');
+    const customerContext = await getCustomerContext(customerPhone);
+    const contextInfo = formatContextForPrompt(customerContext);
     
     if (conversationHistory.length > 0) {
       console.log('📝 Recent messages:', conversationHistory.slice(-3).map(m => ({
@@ -527,9 +549,9 @@ ${latest.bookingUrl}`, messageData.to);
     // Check if quote/link was already sent
     const quoteSent = wasQuoteSent(conversationHistory);
     
-    // Generate AI response
-    console.log('🤖 Generating AI response...');
-    const aiResponse = await generateAIResponse(messageData, conversationHistory);
+    // Generate AI response with customer context
+    console.log('Generating AI response...');
+    const aiResponse = await generateAIResponse(messageData, conversationHistory, customerContext);
     
     if (!aiResponse.success) {
       console.log('❌ AI generation failed, flagging for human');
